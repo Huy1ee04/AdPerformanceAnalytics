@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+   # Spark Master
+  spark-master:
+    image: bitnami/spark:latest
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+    networks:
+      - spark-network
+    ports:
+      - "8081:8080"  # Spark UI
+      - "7077:7077"  # Spark Master
+
+  # Spark Worker node 1 (with Driver program)
+  spark-worker-driver:
+    image: bitnami/spark:latest
+    container_name: spark-worker-driver
+    user: root
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
+      - HOME=/tmp
+    networks:
+      - spark-network
+    volumes:
+      - ./load.py:/opt/spark/app/load.py
+      - ./.env:/opt/spark/.env
+      - ./requirements.txt:/opt/spark/requirements.txt
+      - ./jars/mariadb-java-client-3.5.3.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.5.3.jar
+    command: ["/bin/bash", "-c", "pip install -r /opt/spark/requirements.txt && spark-submit --master spark://spark-master:7077 --jars /opt/bitnami/spark/jars/mariadb-java-client-3.5.3.jar /opt/spark/app/load.py"]
+    depends_on:
+      - spark-master
+      - minio
+      - mariadb
+    ports:
+      - "4040:4040"
+
+  # Spark Worker 2
+  spark-worker-2:
+    image: bitnami/spark:latest
+    container_name: spark-worker-2
+    user: root
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
+      - HOME=/tmp
+    networks:
+      - spark-network
+    depends_on:
+      - spark-master
+    command: ["/bin/bash", "-c", "spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"]
+
+  # Spark Worker 3
+  spark-worker-3:
+    image: bitnami/spark:latest
+    container_name: spark-worker-3
+    user: root
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
+      - HOME=/tmp
+    networks:
+      - spark-network
+    depends_on:
+      - spark-master
+    command: ["/bin/bash", "-c", "spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"]
+  minio:
+    image: bitnami/minio:latest
+    container_name: bitnami_minio
+    environment:
+      - MINIO_ROOT_USER=minio_root
+      - MINIO_ROOT_PASSWORD=minio_root
+      - MINIO_ACCESS_KEY=access_key
+      - MINIO_SECRET_KEY=secret_key
+    volumes:
+      - minio_data:/data
+    ports:
+      - 9000:9000
+      - 9001:9001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - spark-network
+
+  mariadb:
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    ports:
+      - 3306:3306  
+    networks:
+      - spark-network
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+    networks:
+      - spark-network
+
+networks:
+  spark-network:
+    driver: bridge
+
+volumes:
+  minio_data:
+  mariadb_data:
+
+
