@@ -1,0 +1,18 @@
+# Bỏ qua file môi trường
+.env
+*.env
+
+# Bỏ qua file cấu hình của IDE
+.idea/
+.vscode/
+
+# Bỏ qua file cấu hình
+*.cfg
+
+# Bỏ qua file cơ sở dữ liệu
+*.db
+
+# Bỏ qua thư mục ẩn của hệ thống và các tệp log
+.DS_Store
+Thumbs.db
+*.log
