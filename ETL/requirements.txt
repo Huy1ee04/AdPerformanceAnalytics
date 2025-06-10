@@ -1,5 +1,5 @@
-dotenv
 pyspark
 pandas
 pyarrow
 datetime
+python-dotenv
