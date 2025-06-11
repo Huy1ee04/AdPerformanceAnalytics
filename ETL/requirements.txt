@@ -1,5 +1,6 @@
-pyspark
+pyspark==3.5.6
 pandas
 pyarrow
 datetime
 python-dotenv
+pymysql

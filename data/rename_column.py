@@ -1,16 +1,16 @@
 import pandas as pd
 
 # Đường dẫn tới file CSV cần sửa
-file_path = '/Users/builehuy/AdPerformanceAnalytics/data/geo_id.csv'
+file_path = '/Users/builehuy/AdPerformanceAnalytics/data/geo_id_2.csv'
 
 # Đọc file CSV
 df = pd.read_csv(file_path)
-
+final_df = df[['Country Code', 'Name']]
 # Đổi tên cột
-df.rename(columns={
-    'Criteria ID': 'country_code',
-    'Country Code': 'Country'
+final_df.rename(columns={
+    'Country Code': 'country',
+    'Name': 'country_name'
 }, inplace=True)
 
 # Ghi đè file cũ
-df.to_csv(file_path, index=False)
+final_df.to_csv(file_path, index=False)

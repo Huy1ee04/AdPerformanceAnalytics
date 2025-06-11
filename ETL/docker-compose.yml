@@ -37,7 +37,8 @@ services:
       - ./requirements.txt:/opt/spark/requirements.txt
       - ./jars/aws-java-sdk-1.12.785.jar:/opt/bitnami/spark/jars/aws-java-sdk-1.12.785.jar
       - ./jars/hadoop-aws-3.4.1.jar:/opt/bitnami/spark/jars/hadoop-aws-3.4.1.jar
-      - ./jars/mariadb-java-client-3.3.3.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.3.3.jar
+      - ./jars/mariadb-java-client-3.3.2.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.3.2.jar
+      - ./jars/mysql-connector-j-9.3.0.jar:/opt/bitnami/spark/jars/mysql-connector-j-9.3.0.jar
     command: ["/bin/bash", "-c", "pip install -r /opt/spark/requirements.txt && spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"]
     depends_on:
       - spark-master
@@ -60,9 +61,11 @@ services:
     depends_on:
       - spark-master
     volumes:
+      - ./requirements.txt:/opt/spark/requirements.txt
       - ./jars/aws-java-sdk-1.12.785.jar:/opt/bitnami/spark/jars/aws-java-sdk-1.12.785.jar
       - ./jars/hadoop-aws-3.4.1.jar:/opt/bitnami/spark/jars/hadoop-aws-3.4.1.jar
-      - ./jars/mariadb-java-client-3.3.3.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.3.3.jar
+      - ./jars/mariadb-java-client-3.3.2.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.3.2.jar
+      - ./jars/mysql-connector-j-9.3.0.jar:/opt/bitnami/spark/jars/mysql-connector-j-9.3.0.jar
     command: ["/bin/bash", "-c", "spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"]
 
   spark-worker-3:
@@ -81,9 +84,11 @@ services:
     depends_on:
       - spark-master
     volumes:
+      - ./requirements.txt:/opt/spark/requirements.txt
       - ./jars/aws-java-sdk-1.12.785.jar:/opt/bitnami/spark/jars/aws-java-sdk-1.12.785.jar
       - ./jars/hadoop-aws-3.4.1.jar:/opt/bitnami/spark/jars/hadoop-aws-3.4.1.jar
-      - ./jars/mariadb-java-client-3.3.3.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.3.3.jar
+      - ./jars/mariadb-java-client-3.3.2.jar:/opt/bitnami/spark/jars/mariadb-java-client-3.3.2.jar
+      - ./jars/mysql-connector-j-9.3.0.jar:/opt/bitnami/spark/jars/mysql-connector-j-9.3.0.jar
     command: ["/bin/bash", "-c", "spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"]
 
   minio:

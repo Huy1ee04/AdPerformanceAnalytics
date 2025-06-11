@@ -1,10 +1,10 @@
 import pandas as pd
 
 # Đường dẫn đến file CSV gốc
-#input_file = '/Users/builehuy/AdPerformanceAnalytics/geotargets-2025-04-01.csv'  
+input_file = '/Users/builehuy/AdPerformanceAnalytics/data/geotargets-2025-04-01-1.csv'  
 
 # Đường dẫn để lưu file CSV mới
-output_file = '/Users/builehuy/AdPerformanceAnalytics/data/geo_id.csv'
+output_file = '/Users/builehuy/AdPerformanceAnalytics/data/geo_id_2.csv'
 
 # Dòng bắt đầu và kết thúc (theo chỉ số dòng trong file CSV, dòng tiêu đề là dòng 1)
 start_line = 29565
@@ -27,8 +27,8 @@ filtered_df = df[
     (df['Parent ID'].isna())
 ]
 
-# Chỉ giữ lại 2 cột mong muốn
-final_df = filtered_df[['Criteria ID', 'Country Code']]
+# Chỉ giữ lại cột mong muốn
+final_df = filtered_df[['Criteria ID', 'Country Code', 'Name']]
 
 # Lưu dữ liệu trích xuất ra file mới
 final_df.to_csv(output_file, index=False)
