@@ -1,3 +1,11 @@
+x-superset-user: &superset-user root
+x-superset-volumes: &superset-volumes
+  # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
+  - ./docker:/app/docker
+  # - ./superset:/app/superset
+  - ./docker/requirements-local.txt:/app/docker/requirements-local.txt
+  - ./docker/superset_config.py:/app/pythonpath/superset_config.py
+
 services:
   spark-master:
     image: bitnami/spark:latest
@@ -115,7 +123,6 @@ services:
   mariadb:
     image: mariadb
     container_name: mariadb
-    restart: always
     environment:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_DATABASE=ads_schema
@@ -135,6 +142,62 @@ services:
     networks:
       - spark-network
 
+  redis:
+    image: redis:7
+    container_name: superset_cache
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis:/data
+    networks:
+      - spark-network
+
+  superset-init:
+    image: apache/superset:latest-py310
+    container_name: superset_init
+    command: ["/app/docker/docker-init.sh"]
+    env_file:
+      - path: docker/.env # default
+        required: true
+    depends_on:
+      mariadb:
+        condition: service_started
+      redis:
+        condition: service_started
+    user: *superset-user
+    volumes: *superset-volumes
+    environment:
+      SUPERSET_LOAD_EXAMPLES: "no" 
+      SUPERSET_LOG_LEVEL: "${SUPERSET_LOG_LEVEL:-info}"
+      DATABASE_DB: "ads_schema"
+    healthcheck:
+      disable: true
+    networks:
+      - spark-network
+
+  superset:
+    env_file:
+      - path: docker/.env # default
+        required: true
+    image: apache/superset:latest-py310
+    container_name: superset_app
+    command: ["/app/docker/docker-bootstrap.sh", "app"]
+    restart: unless-stopped
+    ports:
+      - 8088:8088
+    user: *superset-user
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+    environment:
+      SUPERSET_LOAD_EXAMPLES: "no" 
+      SUPERSET_LOG_LEVEL: "${SUPERSET_LOG_LEVEL:-info}"
+      DATABASE_DB: "ads_schema"
+    networks:
+      - spark-network
+      
 networks:
   spark-network:
     driver: bridge
@@ -142,3 +205,5 @@ networks:
 volumes:
   minio_data:
   mariadb_data:
+  redis:
+
