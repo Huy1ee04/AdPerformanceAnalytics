@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, hash, input_file_name, regexp_extract, sum as _sum, when
+from pyspark.sql.functions import col,length, lit, hash, input_file_name, regexp_extract, sum as _sum, when
 from pyspark.sql.functions import concat, lpad
 from pyspark.sql.types import *
 from pyspark.sql.types import *
@@ -23,7 +23,7 @@ MARIADB_PASSWORD = os.getenv("MARIADB_PASSWORD")
 MARIADB_DATABASE = "ads_schema"
 if not all([MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MARIADB_USER, MARIADB_PASSWORD]):
     raise ValueError("Missing required credentials in .env file!")
-MARIADB_URL = f"jdbc:mariadb://{MARIADB_HOST}:{MARIADB_PORT}/{MARIADB_DATABASE}"
+MARIADB_URL = f"jdbc:mysql://{MARIADB_HOST}:{MARIADB_PORT}/{MARIADB_DATABASE}"
 
 # Initialize Spark session
 spark = SparkSession.builder \
@@ -33,25 +33,13 @@ spark = SparkSession.builder \
     .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \
     .config("spark.hadoop.fs.s3a.path.style.access", "true") \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    .config("spark.jars", "/opt/bitnami/spark/jars/mariadb-java-client-3.3.2.jar,/opt/bitnami/spark/jars/hadoop-aws-3.4.1.jar,/opt/bitnami/spark/jars/aws-java-sdk-1.12.785.jar") \
+    .config("spark.jars", "/opt/bitnami/spark/jars/mysql-connector-j-9.3.0.jar,/opt/bitnami/spark/jars/hadoop-aws-3.4.1.jar,/opt/bitnami/spark/jars/aws-java-sdk-1.12.785.jar") \
     .config("spark.driver.memory", "4g") \
     .config("spark.executor.memory", "4g") \
     .config("spark.executor.cores", "2") \
     .master("spark://spark-master:7077") \
     .getOrCreate()
 
-
-# Cách 1: Đọc exchange_rates từ MariaDB<->Spark
-# exchange_rates_df = spark.read \
-#     .format("jdbc") \
-#     .option("url", MARIADB_URL) \
-#     .option("dbtable", "exchange_rates") \
-#     .option("user", MARIADB_USER) \
-#     .option("password", MARIADB_PASSWORD) \
-#     .option("numPartitions", 4) \
-#     .load()
-
-#Cách 2: Đọc exchange_rates từ MariaDB->pandas->Spark
 # Lấy thông tin kết nối từ biến môi trường
 host = os.getenv("MARIADB_HOST", "mariadb")
 port = int(os.getenv("MARIADB_PORT", "3306"))
@@ -69,14 +57,18 @@ connection = pymysql.connect(
     database=database
 )
 query = "SELECT date_id, currency, exchange_rate_usd FROM exchange_rates"
-# Đọc vào pandas DataFrame
 pandas_df = pd.read_sql(query, connection)
-connection.close()
-# Chuyển thành Spark DataFrame
 exchange_rates_df = spark.createDataFrame(pandas_df)
-# Hiển thị kết quả
-exchange_rates_df.show()
-exchange_rates_df.printSchema()
+
+query2 = "SELECT country_id,country, country_name FROM dim_country"
+pandas_df2 = pd.read_sql(query2, connection)
+country_df = spark.createDataFrame(pandas_df2)
+
+query3 = "SELECT channel_id, channel FROM dim_channel"
+pandas_df3 = pd.read_sql(query3, connection)
+channel_df = spark.createDataFrame(pandas_df3)
+
+connection.close()
 
 # Process data from MinIO
 prefixes = ["facebook_data", "google_data"]
@@ -96,10 +88,10 @@ for prefix in prefixes:
     df = df.select(
         col("currency").cast("string"),
         col("country").cast("string"),
-        col("date_id").alias("day"),  # Giữ day mới đã gộp
+        col("date_id"),
         col("impressions").cast("int"),
         col("cost").cast("double")).drop("year", "month")
-
+    
     print(f"Schema của {prefix}:")
     df.printSchema()
     print(f"Số bản ghi trong {prefix} trước khi lọc: {df.count()}")
@@ -108,46 +100,26 @@ for prefix in prefixes:
     # đặt alias cho 2 DataFrame
     ads_df = df.alias("ads")               # dữ liệu quảng cáo đã lọc
     er_df  = exchange_rates_df.alias("er") # bảng tỷ giá
-
-    # điều kiện join
-    join_cond = (
-        col("ads.day") == col("er.date_id")
-    ) & (
-        (col("ads.currency") == col("er.currency")) & (col("ads.currency") != "USD")
-    )
+    co_df = country_df.alias("co") # bảng quốc gia
 
     # thực hiện join
     df_joined = (
-        ads_df.join(er_df, join_cond, "left")
-            .withColumn("channel_id", lit(prefix.split("_")[0]))
-            .withColumn("exchange_rate_usd",
-                        when(col("ads.currency") == "USD", lit(1.0))
-                        .otherwise(col("er.exchange_rate_usd")))
-            .select(
-                "channel_id",
-                col("ads.country").alias("country"),
-                col("ads.day").alias("date_id"),
-                col("ads.currency").alias("currency"),
-                "impressions",
-                "cost",
-                "exchange_rate_usd"
-            )
-    )
-
-    print(f"Sau khi join với exchange_rates_df '{prefix}':")
+    ads_df.join(co_df, col("ads.country") == col("co.country"), "left")  # Join với bảng country trước
+          .join(er_df, [col("ads.date_id") == col("er.date_id"), col("ads.currency") == col("er.currency")], "left")  # Join với bảng exchange_rates
+          .withColumn("channel", lit(prefix.split("_")[0]))  # Thêm channel_id từ prefix
+          .select(
+              col("channel"),
+              col("ads.date_id").alias("date_id"),
+              col("co.country_id").alias("country_id"),  # Lấy country_id từ bảng dim_country
+              col("ads.currency").alias("currency"), 
+              col("er.exchange_rate_usd").alias("exchange_rate_usd"),  # Tỷ giá USD
+              col("ads.cost").alias("cost_original"),  # Đặt biệt danh cho cost
+              col("ads.impressions").alias("impressions")
+          )
+    )        
     df_joined.printSchema()
     df_joined.show(5)
-
-    aggregated_df = df_joined.groupBy("channel_id", "country", "date_id", "currency","exchange_rate_usd") \
-                      .agg(
-                          _sum("impressions").alias("impressions"),
-                          _sum("cost").alias("cost_original")
-                      )
-    print(f"Dữ liệu đã aggregate '{prefix}':")
-    aggregated_df.printSchema()
-    aggregated_df.show(6)
-
-    all_dfs.append(aggregated_df)
+    all_dfs.append(df_joined)
 
 if not all_dfs:
     print("Không có dữ liệu nào từ các parquet files.")
@@ -158,56 +130,39 @@ if not all_dfs:
 combined_df = all_dfs[0].union(all_dfs[1]) if len(all_dfs) > 1 else all_dfs[0]
 
 # Convert cost_original to cost_usd
-combined_df = combined_df \
-    .withColumn("effective_rate", 
-                when(col("currency") == "USD", lit(1.0))
-                .when(col("exchange_rate_usd").isNotNull(), col("exchange_rate_usd"))
-                .otherwise(lit(1.0))) \
-    .withColumn("cost_usd", 
-                when(col("effective_rate").isNotNull(), 
-                     col("cost_original") * col("effective_rate"))  
-                .otherwise(col("cost_original"))) \
-    .withColumn("cpi_usd", 
-                when(col("impressions") != 0, col("cost_usd") / col("impressions"))
-                .otherwise(None)) \
-    .drop("exchange_rate_usd", "effective_rate")
-
+combined_df = combined_df.alias("combined").join(
+    channel_df.alias("ch"), 
+    col("combined.channel") == col("ch.channel"), 
+    "left"
+) \
+.withColumn("cost_usd", col("cost_original") * col("exchange_rate_usd"))
+                 
 # Create fact_ad_performance
 fact_ad_performance = combined_df \
     .select(
-        col("channel_id"),
+        col("ch.channel_id"),
         col("date_id"),
-        col("country"),
+        col("country_id"),
         col("currency"),
+        col("exchange_rate_usd"),
         col("cost_original"),
         col("impressions").cast("int"),
         col("cost_usd").cast("double"),
-        col("cpi_usd").cast("double")
     )
 
-# Ensure NOT NULL columns do not contain NULL values
-# fact_ad_performance = fact_ad_performance.na.fill({
-#     "channel_id": "unknown",
-#     "date_id": "00000000",  # Giá trị mặc định cho date_id (ví dụ: "YYYYMMDD")
-#     "country": "XX",        # Giá trị mặc định cho country (ví dụ: "XX" cho không xác định)
-#     "currency": "USD",      # Giá trị mặc định cho currency
-#     "cost_original": 0.0,   # Giá trị mặc định cho cost_original
-#     "impressions": 0        # Giá trị mặc định cho impressions
-# })
-
 print("Dữ liệu chuẩn bị ghi vào fact_ad_performance:")
-fact_ad_performance.show(7)
+fact_ad_performance.show(10)
+
 
 # Write to MariaDB
-#.option("driver", "org.mariadb.jdbc.Driver") \
 try:
     fact_ad_performance.write \
         .format("jdbc") \
+        .option("driver", "com.mysql.jdbc.Driver") \
         .option("url", MARIADB_URL) \
         .option("dbtable", "fact_ad_performance") \
         .option("user", MARIADB_USER) \
         .option("password", MARIADB_PASSWORD) \
-        .option("driver", "org.mariadb.jdbc.Driver") \
         .option("batchsize", "10000") \
         .option("quoteIdentifiers", "true") \
         .mode("append") \
