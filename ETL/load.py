@@ -143,9 +143,6 @@ fact_ad_performance = combined_df \
         col("ch.channel_id"),
         col("date_id"),
         col("country_id"),
-        col("currency"),
-        col("exchange_rate_usd"),
-        col("cost_original"),
         col("impressions").cast("int"),
         col("cost_usd").cast("double"),
     )
